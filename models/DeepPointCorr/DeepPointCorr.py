@@ -170,7 +170,7 @@ class DeepPointCorr(ShapeCorrTemplate):
         return neighbor_loss
 
     def forward(self, data):
-
+        #torch.cuda.empty_cache()
         for shape in ["source", "target"]:
             data[shape]["edge_index"] = [
                 knn(data[shape]["pos"][i], data[shape]["pos"][i], self.hparams.num_neighs,)

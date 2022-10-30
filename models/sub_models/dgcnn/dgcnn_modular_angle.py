@@ -37,13 +37,23 @@ class DGCNN_MODULAR(nn.Module):
         output_dim = output_dim if output_dim is not None else self.hparams.latent_dim
         if(not use_only_classification_head):
             self.convs = []
+            self.convs1 = []
+            self.orientnet_head = []
             for i in range(self.depth):
-                in_features = self.input_features if i == 0 else bb_size * (2 ** (i+1)) * 2
+                in_features = self.input_features if i == 0 else bb_size * (2 ** (i+1)) * 2 #+ 2*out_features
                 out_features = bb_size * 4 if i == 0 else in_features
+                self.orientnet_head.append(nn.Sequential(
+                    nn.Linear(out_features * 2, out_features), nn.BatchNorm1d(out_features), nn.LeakyReLU(negative_slope=0.2),
+                    nn.Dropout(p=self.hparams.dropout),nn.Linear(out_features, 2)
+                ))
                 self.convs.append(nn.Sequential(
-                    nn.Conv2d(in_features, out_features, kernel_size=1, bias=False), nn.BatchNorm2d(out_features), nn.LeakyReLU(negative_slope=0.2),
+                        nn.Conv2d(in_features, out_features, kernel_size=1, bias=False), nn.BatchNorm2d(out_features), nn.LeakyReLU(negative_slope=0.2),
+                    )
                 )
-            )
+                self.convs1.append(nn.Sequential(
+                        nn.Conv1d(out_features*3, out_features, kernel_size=1, bias=False), nn.BatchNorm1d(out_features), nn.LeakyReLU(negative_slope=0.2),
+                    )
+                )
             last_in_dim = bb_size * 2 * sum([2 ** i for i in range(1,self.depth + 1,1)])
             self.convs.append(
                 nn.Sequential(
@@ -51,7 +61,9 @@ class DGCNN_MODULAR(nn.Module):
                 )
             )
             self.convs = nn.ModuleList(self.convs)
-
+            self.convs1 = nn.ModuleList(self.convs1)
+            self.orientnet_head = nn.ModuleList(self.orientnet_head)
+            
         input_latent_dim = self.latent_dim if not use_only_classification_head else self.hparams.DGCNN_latent_dim
         self.linear1 = nn.Linear(input_latent_dim * 2, bb_size * 64, bias=False)
         self.bn6 = nn.BatchNorm1d(bb_size * 64)
@@ -76,17 +88,33 @@ class DGCNN_MODULAR(nn.Module):
             x = torch.cat([x,other],dim=1)
 
         outs = [x]
+        orient_list = []
+        level = 0
         for conv in self.convs[:-1]:
             if(len(outs) > 1):
                 x = get_graph_feature(outs[-1], k=self.num_neighs, idx=None if not self.hparams.only_true_neighs else start_neighs)
             x = conv(x)
-            outs.append(x.max(dim=-1, keepdim=False)[0])
-
+            x = x.max(dim=-1, keepdim=False)[0]
+            orient,global_feature = self.orientnet(x,level)
+            x = self.convs1[level](torch.cat([x,global_feature[...,None].repeat(1,1,x.shape[-1])],dim=1))
+            orient_list.append(orient)
+            outs.append(x)
+            level += 1
         x = torch.cat(outs[1:], dim=1)
         features = self.convs[-1](x)
-        return features.transpose(1,2)
+        orient_list = torch.stack(orient_list)
+        return features.transpose(1,2),orient_list
         # It is advised
     
+    def orientnet(self,feature_per_point,level):
+        
+        x1 = F.adaptive_avg_pool1d(feature_per_point,1).squeeze(-1)
+        x2 = F.adaptive_max_pool1d(feature_per_point,1).squeeze(-1)
+        x_ = torch.cat((x1, x2), 1)
+        # [sin,cos]
+        orient = self.orientnet_head[level](x_)
+        return orient,x_
+
     def aggregate_all_points(self,features_per_point):
         if(features_per_point.shape[1] == self.hparams.num_points):
             features_per_point = features_per_point.transpose(1,2)
@@ -106,9 +134,10 @@ class DGCNN_MODULAR(nn.Module):
 
     def forward(self, x, start_neighs, sigmoid_for_classification=False):
 
-        features_per_point = self.forward_per_point(x, start_neighs=start_neighs)
-        features_aggregated = self.aggregate_all_points(features_per_point)
-        if sigmoid_for_classification:
-            features_aggregated = torch.sigmoid(features_aggregated)
+        features_per_point,orient_list = self.forward_per_point(x, start_neighs=start_neighs)
+        # features_aggregated = self.aggregate_all_points(features_per_point)
+        # if sigmoid_for_classification:
+        #     features_aggregated = torch.sigmoid(features_aggregated)
 
-        return features_aggregated.squeeze(-1),features_per_point.transpose(1,2) # conv assumes B F N
+        return features_per_point.transpose(1,2),orient_list # conv assumes B F N
+

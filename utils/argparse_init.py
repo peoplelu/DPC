@@ -105,7 +105,7 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
         "--batch_size", type=int, default={"complition": 128, "shape_corr": 4}[task_name], help="Number of samples in batch"
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=8, help="Number of samples in train batch"
+        "--train_batch_size", type=int, default=4, help="Number of samples in train batch"
     )
     parser.add_argument(
         "--val_batch_size", type=int, default=8, help="Number of samples in val batch"
@@ -169,7 +169,7 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
     parser.add_argument(
         "--arch",
         "--architecture",
-        default={"shape_corr": "DeepPointCorr", "complition": ""}[task_name],
+        default={"shape_corr": "SE_LuckPointCorr", "complition": ""}[task_name],
         help="Architecture",
     )
 
@@ -205,9 +205,9 @@ def init_parse_argparse_default_params(parser, dataset_name=None, arch=None):
 
     parser.add_argument(
         "--gpus",
-        default="0",type=str
+        default="1",type=str
     )
-    parser.add_argument("--num_data_workers", default=0, type=int, help="for parallel data load")
+    parser.add_argument("--num_data_workers", default=4, type=int, help="for parallel data load")
     parser.add_argument("--config_file", type=str, help="Configuration file yaml file")
     parser.add_argument("--exp_name", type=str, default=None,help="experiment name")
     parser.add_argument("--train_vis_interval", default=400, type=int)

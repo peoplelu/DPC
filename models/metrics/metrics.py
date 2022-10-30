@@ -1,4 +1,5 @@
-from pytorch_lightning.metrics import Accuracy
+#from pytorch_lightning.metrics import Accuracy
+from torchmetrics import Accuracy
 import torch
 import torch.nn.functional as F
 

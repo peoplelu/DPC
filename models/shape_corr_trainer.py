@@ -157,6 +157,7 @@ class ShapeCorrTemplate(LightningModule):
     def test_dataloader(self):
         """Stub."""
         log.info("Test data loader called.")
+        log.info(self.test_dataset)
         return self.dataloader(self.test_dataset,mode='test')
     
     def predict_dataloader(self):
